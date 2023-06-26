@@ -8,6 +8,7 @@ namespace TemperatureMonitoring.App
         protected string GroupId { get; }
         protected ILoggingAdapter Log { get; } = Context.GetLogger();
         private Dictionary<string, IActorRef> deviceIdToActor = new();
+        private Dictionary<IActorRef, string> actorToDeviceId = new();
 
         public DeviceGroup(string groupId)
         {
@@ -29,14 +30,25 @@ namespace TemperatureMonitoring.App
                     {
                         Log.Info($"Creating device actor for {trackMsg.DeviceId}");
                         var deviceActor = Context.ActorOf(Device.Props(trackMsg.GroupId, trackMsg.DeviceId),$"device-{trackMsg.DeviceId}");
+                        Context.Watch(deviceActor);
+                        actorToDeviceId.Add(deviceActor,trackMsg.DeviceId);
                         deviceIdToActor.Add(trackMsg.DeviceId,deviceActor);
                         deviceActor.Forward(trackMsg);
                     }
                     break;
-
                 case Messages.RequestTrackDevice trackMsg:
-                    Log.Info($"Ignoring TrackDevice request for {trackMsg.GroupId}. This actor is responsible for {GroupId}.");
+                    Log.Warning($"Ignoring TrackDevice request for {trackMsg.GroupId}. This actor is responsible for {GroupId}.");
                     break;
+                case Messages.RequestDeviceList deviceListMsg:
+                    Sender.Tell(new Messages.ReplyDeviceList(deviceListMsg.RequestId,new HashSet<string>(deviceIdToActor.Keys)));
+                    break;
+                case Terminated t:
+                    var deviceId = actorToDeviceId[t.ActorRef];
+                    Log.Info($"Device actor for {deviceId} has been terminated");
+                    actorToDeviceId.Remove(t.ActorRef);
+                    deviceIdToActor.Remove(deviceId);
+                    break;
+
             }
         }
 

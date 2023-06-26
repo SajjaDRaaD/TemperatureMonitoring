@@ -1,3 +1,5 @@
+using Akka.Actor;
+using Akka.Dispatch.SysMsg;
 using Akka.TestKit;
 using Akka.TestKit.Xunit2;
 using FluentAssertions;
@@ -114,8 +116,56 @@ namespace TemperatureMonitoring.App.Tests
             var deviceActor2 = probe.LastSender;
 
             deviceActor1.Should().BeEquivalentTo(deviceActor2);
-
-
         }
+
+        [Fact]
+        public void DeviceGroup_actor_must_be_able_to_list_active_devices()
+        {
+            var probe = CreateTestProbe();
+            var groupActor = Sys.ActorOf(DeviceGroup.Props("group"));
+
+            groupActor.Tell(new Messages.RequestTrackDevice("device-1", "group"), probe.Ref);
+            probe.ExpectMsg<Messages.DeviceRegistered>();
+
+            groupActor.Tell(new Messages.RequestTrackDevice("device-2", "group"), probe.Ref);
+            probe.ExpectMsg<Messages.DeviceRegistered>();
+
+            groupActor.Tell(new Messages.RequestDeviceList(1),probe.Ref);
+            probe.ExpectMsg<Messages.ReplyDeviceList>(s=> s.Ids.Contains("device-1") && s.Ids.Contains("device-2"));
+        }
+
+        [Fact]
+        public void DeviceGroup_actor_must_be_able_to_list_active_devices_after_one_shuts_down()
+        {
+            var probe = CreateTestProbe();
+            var groupActor = Sys.ActorOf(DeviceGroup.Props("group"));
+
+            groupActor.Tell(new Messages.RequestTrackDevice("device-1", "group"), probe.Ref);
+            probe.ExpectMsg<Messages.DeviceRegistered>();
+            var device1 = probe.LastSender;
+
+            groupActor.Tell(new Messages.RequestTrackDevice("device-2", "group"), probe.Ref);
+            probe.ExpectMsg<Messages.DeviceRegistered>();
+
+            groupActor.Tell(new Messages.RequestDeviceList(1), probe.Ref);
+            probe.ExpectMsg<Messages.ReplyDeviceList>(s => s.RequestId == 1 
+                                                                                   && s.Ids.Contains("device-1") 
+                                                                                   && s.Ids.Contains("device-2"));
+
+            probe.Watch(device1);
+            device1.Tell(PoisonPill.Instance);
+            probe.ExpectTerminated(device1);
+
+            probe.AwaitAssert(() =>
+            {
+                groupActor.Tell(new Messages.RequestDeviceList(2), probe.Ref);
+                probe.ExpectMsg<Messages.ReplyDeviceList>(
+                    s => s.RequestId == 2 
+                                                && s.Ids.Contains("device-2") 
+                                                && !s.Ids.Contains("device-1"));
+            });
+        }
+
+        
     }
 }

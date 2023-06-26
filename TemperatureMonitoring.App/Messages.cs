@@ -1,4 +1,6 @@
-﻿namespace TemperatureMonitoring.App;
+﻿using Akka.Actor;
+
+namespace TemperatureMonitoring.App;
 
 public static class Messages
 {
@@ -64,4 +66,28 @@ public static class Messages
 
         private DeviceRegistered(){}
     }
+    
+    public sealed class RequestDeviceList
+    {
+        public RequestDeviceList(long requestId)
+        {
+            RequestId = requestId;
+        }
+
+        public long RequestId { get; }
+
+    }
+
+    public sealed class ReplyDeviceList
+    {
+        public long RequestId { get; }
+        public ISet<string> Ids { get; }
+
+        public ReplyDeviceList(long requestId, ISet<string> ids)
+        {
+            RequestId = requestId;
+            Ids = ids;
+        }
+    }
+
 }
